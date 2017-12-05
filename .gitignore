@@ -1,0 +1,16 @@
+# Compiled code
+/target/
+
+# Generated source code
+/src/**/generated/
+
+# Log files
+*.log
+
+# Package files
+*.[ewjr]ar
+*.zip
+*.tar.gz
+
+# Settings
+/.settings/
