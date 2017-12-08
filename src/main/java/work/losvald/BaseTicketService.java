@@ -42,8 +42,9 @@ abstract class BaseTicketService implements TicketService {
   public String reserveSeats(int seatHoldId, String customerEmail) {
     Objects.requireNonNull(customerEmail);
     synchronized (mutex) {
+      expireHolds();
       SeatHold hold = holds.get(seatHoldId);
-      if (customerEmail != hold.customerEmail)
+      if (hold == null || customerEmail != hold.customerEmail)
         return null;
 
       holds.remove(seatHoldId);  // remove from expiration queue

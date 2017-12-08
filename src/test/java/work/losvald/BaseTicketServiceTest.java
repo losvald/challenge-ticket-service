@@ -83,7 +83,8 @@ public class BaseTicketServiceTest {
     assertNotEquals("ID3=" + id3 + "==" + id1 + "=ID1", id3, id1);
 
     // verify that the _same_ customers at the _same time_ gets different IDs
-    assertNotEquals(id3, svc.findAndHoldSeats(1, email1).getId());
+    int id4 = svc.findAndHoldSeats(1, email1).getId();
+    assertNotEquals(id3, id4);
 
     // verify that providing wrong email but correct ID returns null
     assertNull(svc.reserveSeats(id1, email2));
@@ -96,6 +97,10 @@ public class BaseTicketServiceTest {
     // verify that the reserved seat group does _not expire_ when the hold ends
     svc.expiredHoldVisitor = (hold) -> assertNotEquals(id2, hold.getId());
     svc.clock = Clock.offset(svc.clock, expirationPeriod);
+    {
+      // verify that expired seat group cannot be reserved
+      assertNull(svc.reserveSeats(id1, email1));
+    }
   }
 
   @Test
