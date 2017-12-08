@@ -100,6 +100,13 @@ public class BaseTicketServiceTest {
     {
       // verify that expired seat group cannot be reserved
       assertNull(svc.reserveSeats(id1, email1));
+      assertEquals(2, numSeatsAvailable0 - svc.numSeatsAvailable());
+
+      // verify that only the expired seat groups were released
+      assertEquals(
+          Arrays.asList(id1, id3, id4),
+          svc.alloc.released.stream().map(x -> x.getId())
+          .collect(Collectors.toCollection(ArrayList::new)));
     }
   }
 

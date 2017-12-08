@@ -188,7 +188,7 @@ abstract class BaseTicketService implements TicketService {
     java.time.Instant now = clock.instant();
     SeatHold hold;
     while (it.hasNext() &&
-           (hold = it.next().getValue()).expirationTime.compareTo(now) < 0) {
+           (hold = it.next().getValue()).expirationTime.compareTo(now) <= 0) {
       it.remove();
       allocator.release(hold);
       log.info("expiredHoldVisitor(" + hold + ") @ " + hold.expirationTime + " < " + now);
