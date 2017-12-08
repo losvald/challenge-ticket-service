@@ -8,6 +8,33 @@ import java.util.stream.Collectors;
 
 public interface TicketService {
   /**
+   * The number of seats in the venue that are neither held nor reserved
+   *
+   * @return the number of tickets available in the venue
+   */
+  int numSeatsAvailable();
+
+  /**
+   * Find and hold the best available seats for a customer
+   *
+   * @param numSeats the number of seats to find and hold
+   * @param customerEmail unique identifier for the customer
+   * @return a SeatHold object identifying the specific seats and related
+   information
+  */
+  SeatHold findAndHoldSeats(int numSeats, String customerEmail);
+
+  /**
+   * Commit seats held for a specific customer
+   *
+   * @param seatHoldId the seat hold identifier
+   * @param customerEmail the email address of the customer to which
+   * the seat hold is assigned
+   * @return a reservation confirmation code
+   */
+  String reserveSeats(int seatHoldId, String customerEmail);
+
+  /**
    * A group of seats held, uniquely identified by getId().
    *
    * The identifier must be cryptographically secure, so that seats
@@ -113,6 +140,8 @@ public interface TicketService {
     private final SortedSet<Seat> seats;
   }
 
+  // package-private helper classes
+
   /**
    * The value-based class used internally to represents a seat.
    *
@@ -211,30 +240,15 @@ public interface TicketService {
     }
   }
 
-  /**
-   * The number of seats in the venue that are neither held nor reserved
-   *
-   * @return the number of tickets available in the venue
-   */
-  int numSeatsAvailable();
+  static final class DefaultSeatLayout implements SeatLayout {
+    @Override public Seat at(int row, int num) { return new Seat(row, num); }
+    @Override public int getRowCount() { return rowCount; }
+    @Override public int getSeatsPerRowCount() { return colCount; }
 
-  /**
-   * Find and hold the best available seats for a customer
-   *
-   * @param numSeats the number of seats to find and hold
-   * @param customerEmail unique identifier for the customer
-   * @return a SeatHold object identifying the specific seats and related
-   information
-  */
-  SeatHold findAndHoldSeats(int numSeats, String customerEmail);
-
-  /**
-   * Commit seats held for a specific customer
-   *
-   * @param seatHoldId the seat hold identifier
-   * @param customerEmail the email address of the customer to which
-   * the seat hold is assigned
-   * @return a reservation confirmation code
-   */
-  String reserveSeats(int seatHoldId, String customerEmail);
+    public DefaultSeatLayout(int rowCount, int colCount) {
+      this.rowCount = rowCount;
+      this.colCount = colCount;
+    }
+    private final int rowCount, colCount;
+  }
 }

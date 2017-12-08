@@ -9,19 +9,7 @@ import org.junit.Test;
 
 public class TicketServiceTest {
 
-  static final class SimpleSeatLayout implements SeatLayout {
-    @Override public Seat at(int row, int num) { return new Seat(row, num); }
-    @Override public int getRowCount() { return rowCount; }
-    @Override public int getSeatsPerRowCount() { return colCount; }
-
-    SimpleSeatLayout(int rowCount, int colCount) {
-      this.rowCount = rowCount;
-      this.colCount = colCount;
-    }
-    final int rowCount, colCount;
-  }
-
-  final SeatLayout stage3x4 = new SimpleSeatLayout(3, 4);
+  final SeatLayout stage3x4 = new DefaultSeatLayout(3, 4);
 
   @Test
   public void testSeatToString() {

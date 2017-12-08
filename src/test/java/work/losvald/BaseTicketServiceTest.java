@@ -2,9 +2,7 @@ package work.losvald;
 
 import static org.junit.Assert.*;
 import static work.losvald.TicketService.*;
-import static work.losvald.TicketServiceTest.SimpleSeatLayout;
 
-import org.junit.Before;
 import org.junit.Test;
 
 import java.time.Clock;
@@ -20,7 +18,7 @@ public class BaseTicketServiceTest {
 
   static class MockedTicketService extends BaseTicketService {
     MockedTicketService(int numRows, int numCols, Duration holdExpiration) {
-      super(new SimpleSeatLayout(numRows, numCols), holdExpiration);
+      super(new DefaultSeatLayout(numRows, numCols), holdExpiration);
       this.clock = epochTime();
     }
 

@@ -2,16 +2,12 @@ package work.losvald;
 
 import static org.junit.Assert.*;
 import static work.losvald.TicketService.*;
-import static work.losvald.TicketServiceTest.SimpleSeatLayout;
 
-import org.junit.Before;
 import org.junit.Test;
 
 import java.time.Clock;
 import java.time.Duration;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.stream.Collectors;
 
 public class SublinearGreedyTicketServiceTest {
 
