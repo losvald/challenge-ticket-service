@@ -20,8 +20,39 @@ import java.util.logging.Logger;
  * A basic ticket service that implements secure reservation but does
  * not try to optimize the seats (supposed to be done by a subclass).
  *
- * This class is thread-safe and subclasses and synchronizes accesses
- * to the instance created by createAllocator() for convenience.
+ * This class is thread-safe and synchronizes accesses to the instance
+ * created by createAllocator() for convenience, which is responsible
+ * for seat assignment/tracking but not counting.  Hence, different
+ * seat assignment algorithms (i.e., allocators) can be plugged in
+ * without rewriting the bookkeeping logic done by BaseTicketService:
+ * - enerating unique hold IDs in a cryptographically secure way
+ * - mapping hold IDs to customer's email and seats
+ * - expiring hold IDs
+ * - generating a unique and traceable reservation numbers (perfect hash)
+ *
+ * This class has optimal asymptotic complexity under the current
+ * semantics; each operation runs in amortized _constant time_,
+ * excluding the time taken by the (abstract) seat allocator.  The
+ * amortized cost (K calls running in O(K) time, but not O(1) each) is
+ * due to attempting to resolve collisions on hold IDs (see code), and
+ * is avoidable only if multiple holds per customer are disallowed
+ * (then it would suffice to index holds by email instead of hold ID).
+ *
+ * Algorithm overview
+ * ==================
+
+ * - maintain an First-In-First-Out map (LinkedHashMap) that maps each
+ *   hold ID to a SeatHold instance
+ *     - O(1)-time insertion when a hold is created,
+ *     - O(1)-time deletion when a hold is reserved or expired
+ * - store expiration time and customer's email in SeatHold
+ *   (these would anyway be needed for displaying a hold to the customer)
+ * - lazily expire holds in amortized O(1) time at the front of the FIFO map
+ *   (note that expiration times are non-decreasing due to FIFO order)
+ *   at the beginning of any of the following method calls:
+ *     - findAndHold() - to avoid _missing empty seats_ (false negatives)
+ *     - reserveSeats() - to avoid reserving _seats that expired_
+ *     - numSeatsAvailable() - for _up-to-date_ information
  */
 abstract class BaseTicketService implements TicketService {
 
@@ -32,8 +63,14 @@ abstract class BaseTicketService implements TicketService {
    * - the hold associated with the customer email has expired
    * - the provided Id does not match the one in the existing hold
    *
-   * The returned confirmation codes is in format XXXXXXXX-CC, e.g.:
+   * The returned confirmation code is in format XXXXXXXX-CC, e.g.,
    *   3501B1B1-9E (X and C are hexadecimal digits)
+   * and is guaranteed to be traceable to the originating hold ID
+   * without extra bookkeeping (i.e., it is a perfect/two-way hash).
+   *
+   * Time complexity: O(1) amortized (may trigger expiration)
+   *                    +
+   *                  O(allocator.release(N))
    *
    * @param seatHoldId the matching reservation
    * @return confirmation code or null if reservation failed,
@@ -69,6 +106,10 @@ abstract class BaseTicketService implements TicketService {
    * and/or let the former seat group expire by not reserving them
    * (new holds do _not_ extend the expiration time of previous ones).
    *
+   * Time complexity: O(1) amortized [O(K) with probability (2^-32)^K]
+   *                    +
+   *                  O(allocator.find(N) + allocator.release(N))
+   *
    * @param numSeats the number of seats to find and hold
    * @param customerEmail unique identifier for the customer
    * @return a SeatHold object identifying the specific seats
@@ -87,9 +128,8 @@ abstract class BaseTicketService implements TicketService {
         return null;
 
       // Derive a cryptographically secure ID from time and email,
-      // finely increasing the time in case of a collision.  Use a
-      // secret salt in addition to the email and current time, to
-      // avoid attackers from deriving the ID if they know email & time
+      // finely increasing the time in case of a collision.  Use salt
+      // as a defense against attackers who can guess email & time.
       int id;
       long relTime = clock.millis();
       do {
@@ -103,7 +143,9 @@ abstract class BaseTicketService implements TicketService {
       availableCount -= numSeats;
       hold.customerEmail = customerEmail;
       hold.expirationTime = clock.instant().plus(holdExpiration);
-      log.info("Held " + numSeats + " seats; now available: " + availableCount);
+      log.info(
+          String.format("Held %2d seats; now available: %3d", numSeats, availableCount) +
+          "    | " + hold);
       return hold;
     }
   }
@@ -143,6 +185,8 @@ abstract class BaseTicketService implements TicketService {
         layout.getRowCount() * layout.getSeatsPerRowCount();
     this.allocator = createAllocator(layout);
     this.holdExpiration = holdExpiration;
+    log.info("    max available: " + maxAvailableCount + " = " +
+             layout.getRowCount() + "*" + layout.getSeatsPerRowCount());
   }
 
   protected abstract Allocator createAllocator(SeatLayout layout);
