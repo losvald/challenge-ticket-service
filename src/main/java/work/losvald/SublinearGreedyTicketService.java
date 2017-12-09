@@ -196,8 +196,25 @@ public class SublinearGreedyTicketService extends BaseTicketService {
   private static class DivideAndConquerAllocator extends Allocator {
     DivideAndConquerAllocator(SeatLayout layout) {
       super(layout);
-      pq = new PriorityQueue[layout.getRowCount()];
-      // TODO fully initialize
+
+      // TODO: Java's PriorityQueue doesn't support O(log N) removal;
+      // we would ideally use our own, but in the interest of time
+      // use Java's TreeSet (min element lookup is O(log N), though).
+      pq = new TreeSet[layout.getRowCount()];
+      Comparator<Range> comp = (Range lhs, Range rhs) -> {
+            if (lhs.rank < rhs.rank) return -1;
+            if (lhs.rank > rhs.rank) return +1;
+            if (lhs.row < rhs.row) return -1;
+            if (lhs.row > rhs.row) return +1;
+            if (lhs.colFrom < rhs.colTo) return -1;
+            if (lhs.colFrom > rhs.colTo) return +1;
+            return 0;
+      };
+      for (int i = 0; i < pq.length; i++)
+        pq[i] = new TreeSet<Range>(comp);
+
+      this.centerRow = layout.getRowCount() / 2;
+      this.centerCol = layout.getSeatsPerRowCount() / 2;
     }
 
     @Override
@@ -212,6 +229,19 @@ public class SublinearGreedyTicketService extends BaseTicketService {
     }
 
     /**
+     * Returns the preference of a seat (i.e., "distance" to the center).
+     */
+    int d(int row, int col) {
+      int horPenalty = Math.abs(col - centerCol);
+      int verPenalty = row - centerRow;
+      if (verPenalty < 0)
+        verPenalty = -2 * verPenalty;
+      return horPenalty + verPenalty;
+    }
+
+    private final int centerRow, centerCol;
+
+    /**
      * Finds the seat range of size between numSeats and maxSize that
      * is available by examining corresponding priority queues, and
      * updates the hold and a priority queue if it succeeds.
@@ -221,7 +251,7 @@ public class SublinearGreedyTicketService extends BaseTicketService {
       return true;
     }
 
-    private final java.util.PriorityQueue<Range> pq[];
+    private final TreeSet<Range> pq[];  // priority queue with binary search
 
     private static class Range {
       int rank;
@@ -275,9 +305,29 @@ public class SublinearGreedyTicketService extends BaseTicketService {
 
   // internal methods/classes exposed within a package for unit testing
 
-  // Sorts the list with at most 2 distinct values in linear time.y
+  // Sorts the list with at most 2 distinct values in linear time.
   static void sortIntsOfDiff1Descending(LinkedList<Integer> lst) {
-    // TODO
+    Iterator<Integer> iter = lst.iterator();
+    if (!iter.hasNext())
+      return;
+
+    int max = iter.next(), min = max;
+    while (iter.hasNext()) {
+      int cur = iter.next();
+      if (cur > max) max = cur;
+      if (cur < min) min = cur;
+    }
+
+    int minCount = 0;
+    for (iter = lst.iterator(); iter.hasNext(); ) {
+      if (iter.next() == min) {
+        iter.remove();
+        minCount++;
+      }
+    }
+
+    while (minCount-- > 0)
+      lst.add(min);
   }
 
   /**
@@ -285,7 +335,7 @@ public class SublinearGreedyTicketService extends BaseTicketService {
    */
   static class CachedSeatLayout implements SeatLayout {
     @Override
-    public TicketService.Seat at(int row, int num) {
+    public Seat at(int row, int num) {
       if (row < 0 || row >= getRowCount() ||
           num < 0 || num >= getSeatsPerRowCount()) {
         throw new IllegalArgumentException(
@@ -308,12 +358,12 @@ public class SublinearGreedyTicketService extends BaseTicketService {
     CachedSeatLayout(int rows, int cols) {
       if (cols <= 0 || rows <= 0)
         throw new IllegalArgumentException("Must have at least one row and column");
-      this.seats = new TicketService.Seat[rows][cols];
+      this.seats = new Seat[rows][cols];
       for (int r = 0; r < rows; ++r)
         for (int c = 0; c < cols; ++c)
-          this.seats[r][c] = new TicketService.Seat(r, c);
+          this.seats[r][c] = new Seat(r, c);
     }
 
-    private TicketService.Seat[][] seats;
+    private Seat[][] seats;
   }
 }
