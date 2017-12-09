@@ -190,17 +190,19 @@ public class SublinearGreedyTicketService extends BaseTicketService {
 
   @Override
   protected Allocator createAllocator(SeatLayout layout) {
-    return new DivideAndConquerAllocator(layout);
+    return alloc = new DivideAndConquerAllocator(layout);
   }
 
-  private static class DivideAndConquerAllocator extends Allocator {
+  DivideAndConquerAllocator alloc;  // partially exposed for easy unit-testing
+
+  static class DivideAndConquerAllocator extends Allocator {
     DivideAndConquerAllocator(SeatLayout layout) {
       super(layout);
 
       // TODO: Java's PriorityQueue doesn't support O(log N) removal;
       // we would ideally use our own, but in the interest of time
       // use Java's TreeSet (min element lookup is O(log N), though).
-      pq = new TreeSet[layout.getRowCount()];
+      pq = new TreeSet[layout.getSeatsPerRowCount() + 1];
       Comparator<Range> comp = (Range lhs, Range rhs) -> {
             if (lhs.rank < rhs.rank) return -1;
             if (lhs.rank > rhs.rank) return +1;
@@ -215,6 +217,11 @@ public class SublinearGreedyTicketService extends BaseTicketService {
 
       this.centerRow = layout.getRowCount() / 2;
       this.centerCol = layout.getSeatsPerRowCount() / 2;
+
+      TreeSet<Range> pqLast = pq[layout.getSeatsPerRowCount()];
+      for (int row = 0; row < layout.getRowCount(); row++) {
+        pqLast.add(range(layout, row, 0, layout.getSeatsPerRowCount()));
+      }
     }
 
     @Override
@@ -226,6 +233,21 @@ public class SublinearGreedyTicketService extends BaseTicketService {
     @Override
     public void release(SeatHold hold) {
       // TODO
+    }
+
+    @Override
+    public String toString() {
+      StringBuilder sb = new StringBuilder();
+      for (int row = layout.getSeatsPerRowCount(); row >= 1; row--) {
+        if (pq[row].isEmpty())
+          continue;
+        sb.append(row).append(':');
+        for (Range r : pq[row])
+          sb.append(' ').append(r);
+        sb.append('\n');
+      }
+      sb.setLength(sb.length() - 1);  // strip trailing '\n'
+      return sb.toString();
     }
 
     /**
@@ -241,6 +263,13 @@ public class SublinearGreedyTicketService extends BaseTicketService {
 
     private final int centerRow, centerCol;
 
+    int d(int row, int colFrom, int colTo, int colMid) {
+      int col = colMid;
+      if (colTo <= colMid) col = colTo - 1;
+      if (colFrom >= colMid) col = colFrom;
+      return d(row, col);
+    }
+
     /**
      * Finds the seat range of size between numSeats and maxSize that
      * is available by examining corresponding priority queues, and
@@ -251,11 +280,27 @@ public class SublinearGreedyTicketService extends BaseTicketService {
       return true;
     }
 
+    private Range range(SeatLayout layout, int row, int colFrom, int colTo) {
+      return new Range(d(row, colFrom, colTo, centerCol), row, colFrom, colTo);
+    }
+
     private final TreeSet<Range> pq[];  // priority queue with binary search
 
     private static class Range {
       int rank;
       int row, colFrom, colTo;
+
+      Range(int rank, int row, int colFrom, int colTo) {
+        this.rank = rank;
+        this.row = row;
+        this.colFrom = colFrom;
+        this.colTo = colTo;
+      }
+
+      @Override
+      public String toString() {
+        return String.format("(%d, %d:%d-%d)", rank, row, colFrom, colTo - 1);
+      }
     }
 
     private class Search {

@@ -19,7 +19,42 @@ public class SublinearGreedyTicketServiceTest {
   // (After all, the TicketService's logic modulo allocator
   // is already rigorously covered by 2 other unit tests.)
 
+  static DivideAndConquerAllocator createAlloc(int numRows, int numCols) {
+    return new SublinearGreedyTicketService(numRows, numCols, Duration.ofHours(1))
+        .alloc;
+  }
 
+  @Test
+  public void testSeatPreference() {
+    int numRows = 5, numCols = 11;
+    DivideAndConquerAllocator alloc = createAlloc(numRows, numCols);
+    StringBuilder sb = new StringBuilder();
+    for (int row = 0; row < numRows; row++, sb.append('\n'))
+      for (int col = 0; col < numCols; col++) {
+        sb.append(alloc.d(row, col));
+      }
+    assertEquals(
+        "98765456789\n" +
+        "76543234567\n" +
+        "54321012345\n" +
+        "65432123456\n" +
+        "76543234567\n",
+        sb.toString());
+
+    int colMid = numCols / 2;
+    assertEquals(5, alloc.d(0, 2, 5, colMid));  // left overlap
+    assertEquals(4, alloc.d(1, 7, 10, colMid)); // right overlap
+    assertEquals(0, alloc.d(2, 5, 6, colMid));  // middle overlap
+    assertEquals(1, alloc.d(3, 0, numCols, colMid));  // row-spanning
+  }
+
+  @Test
+  public void testInitialState() {
+    DivideAndConquerAllocator alloc = createAlloc(5, 11);
+    assertEquals(
+        "11: (0, 2:0-10) (1, 3:0-10) (2, 1:0-10) (2, 4:0-10) (4, 0:0-10)",
+        alloc.toString());
+  }
 
   @Test
   public void testSortIntsOfDiff1DescendingMaxFirst() {
