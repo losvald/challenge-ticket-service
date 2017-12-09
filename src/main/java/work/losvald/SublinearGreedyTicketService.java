@@ -2,6 +2,7 @@ package work.losvald;
 
 import java.time.Duration;
 import java.util.*;
+import java.util.logging.Logger;
 
 /**
  * A ticket service that uses an efficient _greedy_ algorithm that
@@ -135,7 +136,7 @@ import java.util.*;
  *   11:  (2, 1:0-10), (2, 4:0-10), (4, 0:0-10)
  *   ...
  *   3:   (4, 3:8-10)
- *   2:   (4, 2:0-1), (4, 2:9-10), (4, 3:0-1)
+ *   2:   (4, 2:0-1), (4, 2:9-10), (5, 3:0-1)
  *
  * In this case and in general, the allocator needs to examine
  * each the top element of priority queue `pq[i]` for i in range
@@ -203,14 +204,14 @@ public class SublinearGreedyTicketService extends BaseTicketService {
       // we would ideally use our own, but in the interest of time
       // use Java's TreeSet (min element lookup is O(log N), though).
       pq = new TreeSet[layout.getSeatsPerRowCount() + 1];
-      Comparator<Range> comp = (Range lhs, Range rhs) -> {
+      this.comp = (Range lhs, Range rhs) -> {
             if (lhs.rank < rhs.rank) return -1;
             if (lhs.rank > rhs.rank) return +1;
             if (lhs.row < rhs.row) return -1;
             if (lhs.row > rhs.row) return +1;
-            if (lhs.colFrom < rhs.colTo) return -1;
-            if (lhs.colFrom > rhs.colTo) return +1;
-            return 0;
+            if (lhs.colFrom < rhs.colFrom) return -1;
+            if (lhs.colFrom > rhs.colFrom) return +1;
+            return lhs.colTo - rhs.colTo;
       };
       for (int i = 0; i < pq.length; i++)
         pq[i] = new TreeSet<Range>(comp);
@@ -276,7 +277,52 @@ public class SublinearGreedyTicketService extends BaseTicketService {
      * updates the hold and a priority queue if it succeeds.
      */
     private boolean allocateRange(int numSeats, int maxSize, SeatHold hold) {
-      // TODO check
+      if (numSeats > maxSize)
+        return false;
+
+      // examine best-ranked seat in each pq[numSeats..maxSize]
+      // and store the best among them into r
+      PriorityQueue<Range> pqMins = new PriorityQueue<>(comp);
+      for (int size = numSeats; size <= maxSize; size++) {
+        if (!pq[size].isEmpty())
+          pqMins.offer(pq[size].first());
+      }
+      Range r = pqMins.poll();
+      if (r == null)
+        return false;
+
+      // remove r, split it into range(r.row, colFrom, colTo)
+      // such that |colTo - colFrom| == numSeats and
+      // d(r.row, colFrom, colTo) is maximal,
+      // and finally insert back a range of remaining seats (if any)
+      int row = r.row, colFrom = r.colFrom, colTo = r.colTo;
+      assert pq[r.size()].remove(r) : "can't remove " + r + " @ " + r.size() + "\n" + this;
+      int remSize = r.size() - numSeats;
+      if (remSize > 0) {
+        // split the range so that remainder is farthest from the center,
+        // which minimizes the distance of r
+        if (colTo <= centerCol) {  // case: [rem|new] <center>
+          int colSplit = colFrom + remSize;
+          pq[remSize].add(range(layout, row, colFrom, colSplit));
+          colFrom = colSplit;
+        } else if (centerCol <= colFrom) { // case:   <center> [new|rem]
+          int colSplit = colTo - remSize;
+          pq[remSize].add(range(layout, row, colSplit, colTo));
+          colTo = colSplit;
+        } else {  // case:  [remHalf1|new|remHalf2]  (contains <center>)
+          int remSizeHalf1 = remSize / 2, remSizeHalf2 = remSize - remSizeHalf1;
+          int colSplit1 = colFrom + remSizeHalf1, colSplit2 = colTo - remSizeHalf2;
+          pq[remSizeHalf1].add(range(layout, row, colFrom, colSplit1));
+          pq[remSizeHalf2].add(range(layout, row, colSplit2, colTo));
+          colFrom = colSplit1;
+          colTo = colSplit2;
+        }
+      } else {  // case: [new] (no remainder)
+        // colFrom and colTo is already initialized to full range r
+      }
+      hold.addRange(layout, row, colFrom, colTo - 1);
+      log.info("ALLOC " + range(layout, row, colFrom, colTo) +
+               " of cols " + r.colFrom + "-" + (r.colTo - 1) + ", rem = " + remSize);
       return true;
     }
 
@@ -285,10 +331,13 @@ public class SublinearGreedyTicketService extends BaseTicketService {
     }
 
     private final TreeSet<Range> pq[];  // priority queue with binary search
+    private final Comparator<Range> comp;
 
     private static class Range {
       int rank;
       int row, colFrom, colTo;
+
+      int size() { return colTo - colFrom; }
 
       Range(int rank, int row, int colFrom, int colTo) {
         this.rank = rank;
@@ -301,6 +350,17 @@ public class SublinearGreedyTicketService extends BaseTicketService {
       public String toString() {
         return String.format("(%d, %d:%d-%d)", rank, row, colFrom, colTo - 1);
       }
+
+      @Override
+      public boolean equals(Object that0) {
+        if (that0 instanceof Range)
+          return false;
+        Range that = (Range)that0;
+        return this.rank == that.rank && this.row == that.row &&
+            this.colFrom == that.colFrom && this.colTo == that.colTo;
+      }
+      @Override
+      public int hashCode() { return 0; }
     }
 
     private class Search {
@@ -308,23 +368,29 @@ public class SublinearGreedyTicketService extends BaseTicketService {
       private int maxSize;
       public Search(int numSeats, SeatHold hold) {
         this.hold = hold;
-        this.maxSize = numSeats;
+        this.maxSize = Math.min(numSeats, layout.getSeatsPerRowCount());
+        for (int i = 0; i < this.queues.length; i++)
+          this.queues[i] = new LinkedList<>();
 
         // Breath First Search (see call tree in ASCII art above)
         qSiblings().offer(numSeats);
         do {
+          log.info("TODO " + qSiblings());
           while (!qSiblings().isEmpty()) {
             find(qSiblings().poll());
           }
           swapAndSortChildren();
-        } while (!qChildren().isEmpty());
+        } while (!qSiblings().isEmpty());
       }
 
       private void find(int numSeats) {
-        if (allocateRange(numSeats, maxSize, hold))
+        if (allocateRange(numSeats, maxSize, hold)) {
+          log.info("FOUND " + numSeats + ".." + maxSize);
           return;
+        }
 
-        maxSize = Math.min(maxSize, numSeats);
+        log.info("HALVE " + numSeats + ".." + maxSize);
+        maxSize = Math.min(maxSize, numSeats - 1);
         int halfNumSeats2 = numSeats / 2;
         int halfNumSeats1 = numSeats - halfNumSeats2;
         qChildren().offer(halfNumSeats1);
@@ -343,9 +409,11 @@ public class SublinearGreedyTicketService extends BaseTicketService {
         sortIntsOfDiff1Descending(queues[curr]);
       }
 
-      private LinkedList<Integer>[] queues;
+      private final LinkedList<Integer>[] queues = new LinkedList[2];
       private int curr;
     }
+
+    private static Logger log = Logger.getLogger("DivideAndConquerAllocator");
   }
 
   // internal methods/classes exposed within a package for unit testing

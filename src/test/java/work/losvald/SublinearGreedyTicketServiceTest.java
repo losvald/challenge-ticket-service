@@ -56,6 +56,23 @@ public class SublinearGreedyTicketServiceTest {
         alloc.toString());
   }
 
+  static String find(Allocator alloc, int numSeats) {
+    SeatHold hold = new SeatHold(0);
+    assertTrue(alloc.allocate(numSeats, hold));
+    return hold.hashSeats();
+  }
+
+  @Test
+  public void testFind7Then6WhenAlloc13On5x11Stage() {
+    DivideAndConquerAllocator alloc = createAlloc(5, 11);
+    assertEquals("2:2-8|3:2-7", find(alloc, 13));  // = 7 + 6
+    assertEquals(
+        "11: (2, 1:0-10) (2, 4:0-10) (4, 0:0-10)\n" +
+        "3: (4, 3:8-10)\n" +
+        "2: (4, 2:0-1) (4, 2:9-10) (5, 3:0-1)",
+        alloc.toString());
+  }
+
   @Test
   public void testSortIntsOfDiff1DescendingMaxFirst() {
     LinkedList<Integer> lst =
